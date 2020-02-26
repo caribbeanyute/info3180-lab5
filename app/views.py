@@ -6,10 +6,12 @@ This file creates your application.
 """
 
 from app import app, db, login_manager
-from flask import render_template, request, redirect, url_for, flash
+from flask import render_template, request, redirect, url_for, flash,session
 from flask_login import login_user, logout_user, current_user, login_required
 from app.forms import LoginForm
 from app.models import UserProfile
+from werkzeug.security import check_password_hash
+
 
 
 ###
@@ -26,15 +28,23 @@ def home():
 def about():
     """Render the website's about page."""
     return render_template('about.html')
+    
+@app.route('/secure_page')
+@login_required
+def secure_page():
+    """Render a secure page on our website that only logged in users can access."""
+    return render_template('secure_page.html')
 
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
     form = LoginForm()
-    if request.method == "POST":
+    if request.method == "POST" and form.validate_on_submit():
         # change this to actually validate the entire form submission
         # and not just one field
-        if form.username.data:
+        if form.username.data and form.password.data:
+            username = form.username.data
+            password = form.password.data
             # Get the username and password values from the form.
 
             # using your model, query database for a user based on the username
@@ -42,13 +52,33 @@ def login():
             # You will need to import the appropriate function to do so.
             # Then store the result of that query to a `user` variable so it can be
             # passed to the login_user() method below.
+            user = UserProfile.query.filter_by(username=username).first()
+            if user and check_password_hash(user.password,password):
+                remember_me = False
+                if 'remember_me' in request.form:
+                    remember_me = True
 
             # get user id, load into session
-            login_user(user)
+                login_user(user,remember = remember_me)
+                session['logged_in'] = True
+                flash('Logged in successfully.', 'success')
+                next_page = request.args.get('next')
+                return redirect(next_page or url_for('secure_page'))
+            else:
+                flash('Username or Password is incorrect.', 'danger')
 
             # remember to flash a message to the user
-            return redirect(url_for("home"))  # they should be redirected to a secure-page route instead
+            # they should be redirected to a secure-page route instead
     return render_template("login.html", form=form)
+
+@app.route("/logout")
+@login_required
+def logout():
+    # Logout the user and end the session
+    logout_user()
+    session['logged_in'] = False
+    flash('You have been logged out.', 'danger')
+    return redirect(url_for('home'))
 
 
 # user_loader callback. This callback is used to reload the user object from
